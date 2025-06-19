@@ -79,7 +79,7 @@ jobs:
     - name: Deploy via SSH
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
-          cd /path/to/project
+          cd /server
           if [ "${{ needs.build_and_push.outputs.full_restart }}" = "true" ]; then
             docker-compose down
             docker-compose pull

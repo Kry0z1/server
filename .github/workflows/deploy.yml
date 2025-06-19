@@ -15,6 +15,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Determine restart type
       id: check_changes
@@ -64,29 +66,32 @@ jobs:
             docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA
           fi
         done
-
   deploy:
     needs: build_and_push
     runs-on: ubuntu-latest
     steps:
-    - name: SSH Deploy
-      uses: appleboy/ssh-action@v1
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
       with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-          cd /server
-          
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+    - name: Test SSH connection
+      run: ssh -o StrictHostKeyChecking=no -v ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} echo "SSH connection successful"
+
+    - name: Deploy via SSH
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} << EOF
+          cd /path/to/project
           if [ "${{ needs.build_and_push.outputs.full_restart }}" = "true" ]; then
-            # Full restart flow
             docker-compose down
             docker-compose pull
             docker-compose up -d
           else
-            # Partial service update
             for service in ${{ needs.build_and_push.outputs.changed_services }}; do
-              docker-compose pull $service
-              docker-compose up -d --no-deps $service
+              docker-compose pull \$service
+              docker-compose up -d --no-deps \$service
             done
           fi
+        EOF
+

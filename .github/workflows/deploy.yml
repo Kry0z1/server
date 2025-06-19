@@ -77,7 +77,7 @@ jobs:
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
 
     - name: Test SSH connection
-      run: ssh -o StrictHostKeyChecking=no -v ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} echo "SSH connection successful"
+      run: ssh -o StrictHostKeyChecking=no -v ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}; echo "SSH connection successful"
 
     - name: Deploy via SSH
       run: |

@@ -68,6 +68,7 @@ jobs:
             docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service
           fi
         done
+
   deploy:
     needs: build_and_push
     runs-on: ubuntu-latest
@@ -77,7 +78,10 @@ jobs:
       with:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
+    
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
     - name: Copy files if changed
       if: ${{ needs.build_and_push.outputs.full_restart == 'true' }}
       run: |

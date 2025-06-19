@@ -3,66 +3,90 @@ name: Deploy
 on:
   push:
     paths:
-      - 'hello/**'
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}
-  SSH_HOST: ${{ secrets.SSH_HOST }}
-  SSH_USER: ${{ secrets.SSH_USER }}
-  SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      - 'services/**'
+      - 'docker-compose.yaml'
 
 jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    outputs:
+      full_restart: ${{ steps.check_changes.outputs.full_restart }}
+      changed_services: ${{ steps.get_changed_services.outputs.changed_services }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Determine restart type
+      id: check_changes
+      run: |
+        if git diff --quiet HEAD^ HEAD -- docker-compose.yml; then
+          echo "full_restart=false" >> $GITHUB_OUTPUT
+        else
+          echo "full_restart=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Identify changed services
+      id: get_changed_services
+      if: ${{ steps.check_changes.outputs.full_restart == 'false' }}
+      run: |
+        changed_services=""
+        for dir in services/*/; do
+          if git diff --quiet HEAD^ HEAD -- $dir || [ -z "$(ls -A $dir)" ]; then
+            continue
+          fi
+          if [ -f "$dir/Dockerfile" ]; then
+            changed_services+="$(basename $dir) "
+          fi
+        done
+        echo "changed_services=${changed_services% }" >> $GITHUB_OUTPUT
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push changed services
+      if: ${{ steps.check_changes.outputs.full_restart == 'false' }}
+      run: |
+        for service in ${{ steps.get_changed_services.outputs.changed_services }}; do
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA ./services/$service
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA
+        done
+
+    - name: Build and push all services
+      if: ${{ steps.check_changes.outputs.full_restart == 'true' }}
+      run: |
+        for dir in services/*/; do
+          service=$(basename $dir)
+          if [ -f "$dir/Dockerfile" ]; then
+            docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA $dir
+            docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA
+          fi
+        done
+
   deploy:
+    needs: build_and_push
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Detect changed services
-        id: changed
-        run: |
-          CHANGED_SERVICES=$(git diff --name-only HEAD^ HEAD | awk -F/ '{print $1}' | sort | uniq)
-          echo "services=$CHANGED_SERVICES" >> $GITHUB_OUTPUT
-          echo "Changed services: $CHANGED_SERVICES"
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push changed services
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-
-          for SERVICE in ${{ steps.changed.outputs.services }}; do
-            if [ -f "$SERVICE/Dockerfile" ]; then
-              TAG="$TIMESTAMP-$SHORT_SHA"
-              echo "Building $SERVICE with tag $TAG"
-              
-              docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/$SERVICE:$TAG ./$SERVICE
-              docker push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/$SERVICE:$TAG
-              
-              echo "$SERVICE:$TAG" >> updated_services.txt
-            fi
-          done
-
-      - name: Deploy to server
-        if: ${{ steps.changed.outputs.services != '' }}
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ env.SSH_HOST }}
-          username: ${{ env.SSH_USER }}
-          key: ${{ env.SSH_KEY }}
-          script: |
-            cd /path/to/your/docker-compose/folder
-            while read -r line; do
-              SERVICE=$(echo $line | cut -d':' -f1)
-              TAG=$(echo $line | cut -d':' -f2)
-              docker-compose pull $SERVICE
-              docker-compose up -d $SERVICE
-              echo "Redeployed $SERVICE with $TAG"
-            done < updated_services.txt
+    - name: SSH Deploy
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /server
+          
+          if [ "${{ needs.build_and_push.outputs.full_restart }}" = "true" ]; then
+            # Full restart flow
+            docker-compose down
+            docker-compose pull
+            docker-compose up -d
+          else
+            # Partial service update
+            for service in ${{ needs.build_and_push.outputs.changed_services }}; do
+              docker-compose pull $service
+              docker-compose up -d --no-deps $service
+            done
+          fi

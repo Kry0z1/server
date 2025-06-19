@@ -2,7 +2,7 @@ version: '3.3'
 
 services:
   app:
-    image: ghcr.io/kry0z1/hello:latest
+    image: kry0z1/hello:latest
     container_name: hello
     restart: unless-stopped
     ports:

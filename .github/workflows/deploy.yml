@@ -35,9 +35,12 @@ jobs:
 
       - name: Build and push changed services
         run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
           for SERVICE in ${{ steps.changed.outputs.services }}; do
             if [ -f "$SERVICE/Dockerfile" ]; then
-              TAG=$(date +%Y%m%d-%H%M%S)-${{ github.sha:0:7 }}
+              TAG="$TIMESTAMP-$SHORT_SHA"
               echo "Building $SERVICE with tag $TAG"
               
               docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/$SERVICE:$TAG ./$SERVICE

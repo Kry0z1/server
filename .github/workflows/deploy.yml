@@ -54,6 +54,7 @@ jobs:
         for service in ${{ steps.get_changed_services.outputs.changed_services }}; do
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA ./services/$service
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service
         done
 
     - name: Build and push all services
@@ -64,6 +65,7 @@ jobs:
           if [ -f "$dir/Dockerfile" ]; then
             docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA $dir
             docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA
+            docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service
           fi
         done
   deploy:

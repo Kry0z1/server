@@ -52,7 +52,7 @@ jobs:
       if: ${{ steps.check_changes.outputs.full_restart == 'false' }}
       run: |
         for service in ${{ steps.get_changed_services.outputs.changed_services }}; do
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:latest $dir
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA -t ${{ secrets.DOCKERHUB_USERNAME }}/$service:latest ./services/$service
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service:$GITHUB_SHA
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/$service
         done

@@ -21,7 +21,7 @@ jobs:
     - name: Determine restart type
       id: check_changes
       run: |
-        if git diff --quiet HEAD^ HEAD -- docker-compose.yml; then
+        if git diff --quiet HEAD^ HEAD -- docker-compose.yaml; then
           echo "full_restart=false" >> $GITHUB_OUTPUT
         else
           echo "full_restart=true" >> $GITHUB_OUTPUT
@@ -77,6 +77,11 @@ jobs:
       with:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+    - name: Copy files if changed
+      if: ${{ needs.build_and_push.outputs.full_restart == 'true' }}
+      run: |
+        scp -o StrictHostKeyChecking=no docker-compose.yaml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/server
 
     - name: Deploy via SSH
       run: |
